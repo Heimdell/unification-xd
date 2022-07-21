@@ -24,7 +24,6 @@ module Data.Functor.Fixpoints where
 import Control.Monad ((<=<))
 import Data.Data (Data, Typeable)
 import GHC.Generics (Generic)
-import Data.Foldable (fold)
 
 {- | Fixpoint of a functor term, with some context c at each node.
 -}

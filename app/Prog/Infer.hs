@@ -13,9 +13,6 @@ import Ignore
 import Pos
 import Prog.AST
 
-import Debug.Trace
-import Shower
-
 data RecordError
   = NoField         P Name Type           -- ^ There is no such field in the record.
   | NonRecordAccess P Name Type           -- ^ Field access on non-record.
@@ -40,7 +37,7 @@ infer = \case
     tf  <- infer f
     txs <- traverse infer xs
     r   <- freshType
-    unify p (Term $ TArr p txs r) tf  -- TODO: Check order.
+    _   <- unify p (Term $ TArr p txs r) tf  -- TODO: Check order.
     return r
 
   Lam p as b -> do
@@ -51,7 +48,7 @@ infer = \case
 
     return $ Term $ TArr p argTy t
 
-  Let p ds b -> do
+  Let _ ds b -> do
     let vals  = [val   | Decl  val   <- ds]
     let aliai = [alias | Alias alias <- ds]
 
@@ -62,16 +59,14 @@ infer = \case
 
     withFreshMonotypesFor ns do
 
-      tys <- for vals \v@(Val _ _ p) -> do    -- Try infer recursive bindings.
+      tys <- for vals \(Val _ n p) -> do    -- Try infer recursive bindings.
         t <- infer p
-        return (v, t)
+        return (n, t)
 
-      qtys <- for tys \(Val i n _, t) -> do
-        qt <- generalise i t
-        return (n, qt)
+      qtys <- (traverse.traverse) generalise tys
 
       withPolytypes qtys do         -- Re-push them generalised,
-        infer b                             -- infer body.
+        infer b                     -- infer body.
 
   Int p _ -> return $ Term $ TCon p $ Name p "Int"
   Txt p _ -> return $ Term $ TCon p $ Name p "String"
@@ -81,34 +76,37 @@ infer = \case
     return $ Term $ TRec p fTys
 
   Get p f b -> do
-    t <- infer b
-    t <- applyBindings p t           -- We have to, we can't unify
-    case t of                                   -- with record of arbitrary size.
+    t  <- infer b
+    t' <- applyBindings p t                     -- We have to, we can't unify
+    case t' of                                   -- with record of arbitrary size.
       Term (TRec _ fTys) -> do                  -- The record /structure/ must be already known.
         case lookup f fTys of                   -- (it still may contain variables!)
-          Nothing -> throwM $ NoField p f t
-          Just t  -> return t
+          Nothing  -> throwM $ NoField p f t
+          Just t'' -> return t''
 
-      _ -> throwM $ NonRecordAccess p f t
+      _ -> throwM $ NonRecordAccess p f t'
 
   Upd p f v b -> do
-    t <- infer b
-    v <- infer v
-    t <- applyBindings p t          -- Same as in `Get`.
-    case t of
+    t  <- infer b
+    v' <- infer v
+    t' <- applyBindings p t          -- Same as in `Get`.
+    case t' of
       Term (TRec _ fTys) -> do
         case lookup f fTys of
-          Nothing -> throwM $ NoField p f t
-          Just t  -> unify p t v
+          Nothing  -> throwM $ NoField p f t'
+          Just t'' -> unify p t'' v'
 
       _ -> throwM $ NonRecordAccess p f t
 
   Seq _ [p] -> do
     infer p
 
+  Seq p [] -> do
+    return $ Term $ TCon p $ Name p "Unit"
+
   Seq i (p : ps) -> do
     t <- infer p
-    unify (pInfo p)
+    _ <- unify (pInfo p)
       do Term $ TCon (I nowhere) $ Name (I nowhere) "Unit"
       t  -- Unused stuff must be voided.
     infer (Seq i ps)
@@ -119,7 +117,7 @@ infer = \case
     t' <- infer p
     unify i t' t
 
-  FFI i t -> do
+  FFI _ t -> do
     return t
 
   Map i fs -> do
@@ -129,8 +127,8 @@ infer = \case
     for_ fs \(k, v) -> do
       tk <- infer k
       tv <- infer v
-      unify (pInfo k) tkr tk
-      unify (pInfo v) tvr tv
+      _  <- unify (pInfo k) tkr tk
+      _  <- unify (pInfo v) tvr tv
       return (tk, tv)
 
     return $ Term $ TMap i tkr tvr

@@ -44,7 +44,6 @@ import Data.Map (Map)
 import Data.Set qualified as Set
 import Data.Set (Set)
 import Data.Traversable (for)
-import Data.Typeable (Typeable)
 import Data.Foldable (fold)
 import GHC.Generics
 
@@ -166,7 +165,7 @@ class
 new :: BindingMonad m store term var => Term term var -> m var
 new t = do
   v <- fresh
-  v =: t
+  _ <- v =: t
   return v
 
 {- | I hate `lift`.
@@ -185,15 +184,15 @@ instance {-# OVERLAPPABLE #-}
 
      Internal function. If you think that's what you need, consider `semiprune`.
 -}
-prune :: BindingMonad m store term var => Term term var -> m (Term term var)
-prune = \case
-  t@Term{} -> return t
-  Var v -> do
-    find v >>= \case
-      Just v' -> do
-        t <- prune v'
-        v =: t
-      Nothing -> return (Var v)
+-- prune :: BindingMonad m store term var => Term term var -> m (Term term var)
+-- prune = \case
+--   t@Term{} -> return t
+--   Var v -> do
+--     find v >>= \case
+--       Just v' -> do
+--         t <- prune v'
+--         v =: t
+--       Nothing -> return (Var v)
 
 {- | Break chains like @a -> b@, @b -> c@, @c -> Int@, make all vars in chain
      refer to the last /variable/ instead (e.g. @a -> c@, @b -> c@, @c -> Int@).
@@ -209,8 +208,8 @@ semiprune t = case t of
         find v0 >>= \case
           Nothing     -> return t0
           Just Term{} -> return t0
-          Just t@(Var v) -> do
-            final <- loop v t
+          Just t'@(Var v') -> do
+            final <- loop v' t'
             v0 =: final
 
 {- | Analog to occurs-check that is waaay faster.
@@ -237,7 +236,7 @@ instance (MonadThrow m, Ord var, Exception (UError pos term var)) => MonadOccurs
   seenAs p v t = do
     vars <- VisitedSetT get
     case Map.lookup v vars of
-      Just t -> throwM $ Occurs p v $ Term t
+      Just t' -> throwM $ Occurs p v $ Term t'
       Nothing -> VisitedSetT $ modify $ Map.insert v t
 
 {- | Run algorithm with visited-set enabled.
@@ -263,13 +262,10 @@ getFreeVars' list = do
   idSet <- evalStateT (fold <$> traverse loop list) Set.empty
   return $ Set.toList idSet
   where
-    varsOf :: Foldable f => f var -> [var]
-    varsOf = Set.toList . foldMap Set.singleton
-
     loop :: Term term var -> StateT (Set var) m (Set var)
     loop t = do
       semiprune t >>= \case
-        Term t -> fold <$> traverse loop t
+        Term t' -> fold <$> traverse loop t'
         Var v -> do
           done <- gets (Set.member v)
           if done then return mempty
@@ -277,7 +273,7 @@ getFreeVars' list = do
             modify (Set.insert v)
             find v >>= \case
               Nothing -> return $ Set.singleton v
-              Just t  -> loop t
+              Just t'  -> loop t'
 
 {- | Visitor pattern over storage.
 -}
@@ -299,16 +295,16 @@ visitOnce p leaf node = loop
         Term layer -> Term <$> traverse loop layer
         Var v -> do
           gets (Map.lookup v) >>= \case
-            Just (Right t) -> return t
-            Just (Left  t) -> throwM $ Occurs p v t
+            Just (Right t') -> return t'
+            Just (Left  t') -> throwM $ Occurs p v t'
             Nothing -> do
               find v >>= \case
                 Nothing -> leaf v
-                Just t -> do
-                  modify $ Map.insert v $ Left t
-                  t' <- node v t
-                  modify $ Map.insert v $ Right t'
-                  return t'
+                Just t' -> do
+                  modify $ Map.insert v $ Left t'
+                  t'' <- node v t'
+                  modify $ Map.insert v $ Right t''
+                  return t''
 
 {- | Rank1-polytype -}
 data QTerm term var = Forall
@@ -325,10 +321,10 @@ deriving stock instance (Ord (term (Term term var)), Ord var) => Ord (QTerm term
      Generates a Rank1-polytype.
 -}
 generalise
-  :: forall m store pos term var
-  .  (CanInfer pos term var store m)
-  => pos -> Term term var -> m (QTerm term var)
-generalise p t = do
+  :: forall m store term var
+  .  (CanInfer' term var store m)
+  => Term term var -> m (QTerm term var)
+generalise t = do
   vs <- getFreeVars t
   return $ Forall vs t
 
@@ -373,8 +369,8 @@ refreshVars
   .  (CanInfer pos term var store m)
   => pos -> Term term var -> m (Term term var)
 refreshVars p t = do
-  ((), t) <- refreshVarsAll p ((), t)
-  return t
+  ((), t') <- refreshVarsAll p ((), t)
+  return t'
 
 {- | Refresh all variables (shared).
 -}
@@ -405,15 +401,15 @@ unify
   :: forall m store pos term var
   .  (CanInfer pos term var store m)
   => pos -> Term term var -> Term term var -> m (Term term var)
-unify p tl0 tr0 =
+unify p tl0' tr0' =
   visitedSet do
-    loop tl0 tr0
+    loop tl0' tr0'
 
   where
     loop :: Term term var -> Term term var -> VisitedSetT term var m (Term term var)
-    loop tl0 tr0 = do
-      tl0 <- semiprune tl0
-      tr0 <- semiprune tr0
+    loop tl00 tr00 = do
+      tl0 <- semiprune tl00
+      tr0 <- semiprune tr00
       case (tl0, tr0) of
         (Var vl, Var vr)
           | vl == vr  -> return tr0
@@ -430,8 +426,10 @@ unify p tl0 tr0 =
                     seenAs p vl tl
                     seenAs p vr tr
                     matches tl tr
-                  vr =: t
+                  _ <- vr =: t
                   vl =: tr0
+
+                _ -> error "unify: impossible"
 
         (Var vl, Term tr) -> do
           t <- find vl >>= \case
@@ -440,7 +438,9 @@ unify p tl0 tr0 =
               rollback do
                 seenAs p vl tl
                 matches tl tr
-          vl =: t
+            _ -> error "unify: impossible"
+
+          _ <- vl =: t
           return tl0
 
         (Term tl, Var vr) -> do
@@ -450,7 +450,9 @@ unify p tl0 tr0 =
               rollback do
                 seenAs p vr tr
                 matches tl tr
-          vr =: t
+            _ -> error "unify: impossible"
+
+          _ <- vr =: t
           return tr0
 
         (Term tl, Term tr) -> do

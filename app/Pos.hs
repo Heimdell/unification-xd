@@ -25,13 +25,13 @@ nowhere = Pos (-1) (-1)
 {- | Adjust the position by going over 1 char.
 -}
 advance :: Char -> Pos -> Pos
-advance '\n' (Pos l c) = Pos (l + 1) 1
+advance '\n' (Pos l _) = Pos (l + 1) 1
 advance  _   (Pos l c) = Pos  l     (c + 1)
 
 {- | Equip all char in the string with positions.
 -}
 pos :: String -> [(Pos, Char)]
-pos s = go start s
+pos = go start
   where
     go p (c : s) = (p, c) : go (advance c p) s
     go _ []      = []

@@ -28,12 +28,13 @@ instance Show SExpr where
      Does not backtrack.
 -}
 parseSExpr :: String -> Either String SExpr
-parseSExpr = go [(start, [])] . pos
+parseSExpr = go [] . pos
   where
     go                          stack  ((_,  c ) : s) | isSpace c = go stack s
     go                          stack  ((_, ';' ) : s) = go stack $ dropWhile ((/= '\n') . snd) s
     go                          stack  ((p, '(') : s) = go ((p, []) : stack) s
     go ((p, top) : (p', top') : stack) ((_, ')') : s) = go ((p', (Lst (I p) (reverse top) : top')) : stack) s
+    go [(p, top)]                      ((_, ')') : _) = return (Lst (I p) (reverse top))
 
     go ((p', top) : stack) ((p, '\'') : s) = do
       case break ((== '\'') . snd) s of
@@ -42,11 +43,11 @@ parseSExpr = go [(start, [])] . pos
 
     go ((p', top) : stack) ((p, c) : s)
       | isDigit c = do
-        case break ((\c -> not (or [isDigit c, c == '.'])) . snd) s of
+        case break ((\c' -> not (or [isDigit c', c' == '.'])) . snd) s of
           (str, s') -> go ((p', Num (I p) (c : map snd str) : top) : stack) s'
 
       | not (c `elem` " \n()'") = do
-        case break ((\c -> c `elem` " \n()'") . snd) s of
+        case break ((`elem` " \n()'") . snd) s of
           (str, s') -> go ((p', Sym (I p) (c : map snd str) : top) : stack) s'
 
     go [(p, top)] [] = return $ Lst (I p) (reverse top)

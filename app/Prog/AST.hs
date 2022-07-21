@@ -1,7 +1,8 @@
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Prog.AST where
 
-import Control.Monad.RWS
 import Data.List (intercalate)
 import GHC.Generics
 

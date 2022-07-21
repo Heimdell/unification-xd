@@ -12,7 +12,6 @@ import Data.Map qualified as Map
 import Data.Map (Map)
 
 import Control.Monad.Inference
-import Data.Functor.Fixpoints
 
 {- | Allows to refresh variables. Is a `StateT`, internally.
 -}
@@ -73,7 +72,7 @@ instance MonadTrans (UnificationT t v) where
 {- | Run inification, dump all guts.
 -}
 runUnification
-  :: forall p t v a m
+  :: forall t v a m
   .  (Ord v, MonadRefresh m v, MonadThrow m)
   => UnificationT t v m a
   -> m (a, UState t v)

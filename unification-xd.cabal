@@ -59,8 +59,7 @@ common def
     default-language:
         Haskell2010
 
-    ghc-options:
-        -freverse-errors
+    ghc-options: -freverse-errors -Wall -Werror -fdiagnostics-color=always
 
 library
     import: def

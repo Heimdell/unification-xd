@@ -1,8 +1,8 @@
 
 (let
-  ((+         (ffi (fun (a a)    a )))
-   (print-int (ffi (fun (Int)    Unit)))
-   (print-str (ffi (fun (String) Unit)))
+  ((+         (ffi (fun (a a)      a)))
+   (print-int (ffi (fun (#Int)    #Unit)))
+   (print-str (ffi (fun (#String) #Unit)))
   )
 
   (begin

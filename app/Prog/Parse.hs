@@ -62,18 +62,18 @@ parseProg = \case
   Str p n -> do
     return $ Txt p n
 
-  s@(Sym p n) -> do
+  s@(Sym p _) -> do
     n <- parseName s
     return $ V p n
 
   Lst p (f : xs) -> do
-    f  <- parseProg f
-    xs <- traverse parseProg xs
-    return $ App p f xs
+    f'  <- parseProg f
+    xs' <- traverse parseProg xs
+    return $ App p f' xs'
 
 parsePairs :: SExpr -> Either String (Prog, Prog)
 parsePairs = \case
-  Lst p [name, prog] -> do
+  Lst _ [name, prog] -> do
     n <- parseProg name
     p <- parseProg prog
     return (n, p)
@@ -81,7 +81,7 @@ parsePairs = \case
 
 parseFields :: SExpr -> Either String (Name, Prog)
 parseFields = \case
-  Lst p [name, prog] -> do
+  Lst _ [name, prog] -> do
     n <- parseName name
     p <- parseProg prog
     return (n, p)
@@ -95,28 +95,27 @@ parseType = \case
     return $ Term $ TArr p as t
 
   Lst p [Sym _ "map", k, v] -> do
-    k  <- parseType k
-    v  <- parseType v
-    return $ Term $ TMap p k v
+    k' <- parseType k
+    v' <- parseType v
+    return $ Term $ TMap p k' v'
 
   Lst p (Sym _ "rec" : fields) -> do
     fs <- traverse parseTypeFields fields
     return $ Term $ TRec p fs
 
-  s@(Sym p ('#' : n)) -> do
-    n <- parseName (Sym p n)
-    return $ Term $ TCon p n
+  Sym p ('#' : n) -> do
+    n' <- parseName (Sym p n)
+    return $ Term $ TCon p n'
 
-  s@(Sym p n) -> do
+  s@Sym {} -> do
     n <- parseName s
     return $ Var n
 
   s -> Left $ "expected type at " ++ show (unI (sPos s))
 
-
 parseTypeFields :: SExpr -> Either String (Name, Type)
 parseTypeFields = \case
-  Lst p [name, ty] -> do
+  Lst _ [name, ty] -> do
     n <- parseName name
     t <- parseType ty
     return (n, t)
@@ -129,9 +128,9 @@ parseDecls = \case
     b <- parseProg body
     return $ Decl $ Val p n b
   Lst p [Sym _ "type", n, ty] -> do
-    n  <- parseName n
-    ty <- parseType ty
-    return $ Alias $ TAlias p n ty
+    n'  <- parseName n
+    ty' <- parseType ty
+    return $ Alias $ TAlias p n' ty'
   s -> do
     Left $ "expected (name prog) at " ++ show (unI (sPos s))
 

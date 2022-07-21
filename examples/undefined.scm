@@ -1,7 +1,7 @@
 
 (let
   ((a (+ 1 2))
-   (+ (ffi (fun (Int Int) Int)))
+   (+ (ffi (fun (#Int #Int) #Int)))
   )
 
   (+ b a)
