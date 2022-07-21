@@ -7,7 +7,9 @@
    (const (fun (x y) x))
 
    ; integer plus
-   (+     (ffi (fun (Int Int) Int)))
+   (+     (ffi (fun (Num #Int) #Int)))
+
+   (type Num #Int)
 
    ; record construction
    (Point (fun (x y) (rec (x x) (y y))))
@@ -21,6 +23,6 @@
 
   (begin
     (void ((id id) 1))
-    (y (y (Point (Point 1 '2') (Point 2 '3'))))
+    (y (y (Point (Point (+ 1 3) '2') (Point 2 '3'))))
   )
 )
