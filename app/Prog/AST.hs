@@ -30,6 +30,18 @@ data Prog
   | Ann { pInfo :: P, pProg   :: Prog, pType :: Type }       --
   | FFI { pInfo :: P, pType   :: Type }            --
   | Map { pInfo :: P, pKVs    :: [(Prog, Prog)] }
+  | Mtc { pInfo :: P, pProg   :: Prog, pAlts :: [Alt] }
+  deriving stock (Show)
+
+data Alt = Alt { aInfo :: P, aPat :: Pat, aProg :: Prog }
+  deriving stock (Show)
+
+data Pat
+  = PVar  P Name
+  | PCtor P Name Pat
+  | PRec  P [(Name, Pat)]
+  | PInt  P String
+  | PTxt  P String
   deriving stock (Show)
 
 {- | Value declaration.
@@ -37,6 +49,18 @@ data Prog
 data Decl
   = Decl  Val
   | Alias TAlias
+  | TDecl Newtype
+  deriving stock (Show)
+
+data Newtype = Newtype
+  { ntInfo :: P
+  , ntName :: TName
+  , ntArgs :: [Name]
+  , ntCtors :: [Ctor]
+  }
+  deriving stock (Show)
+
+data Ctor = Ctor { cInfo :: P, cName :: Name, cType :: Type }
   deriving stock (Show)
 
 data Val = Val P Name Prog
@@ -95,6 +119,9 @@ newtype TName = TName { unTName :: Name }
 
 tCon :: P -> String -> Type
 tCon p n = Term $ TCon p (TName $ Name p n)
+
+tCon' :: P -> TName -> Type
+tCon' p n = Term $ TCon p n
 
 tArr :: P -> [Type] -> Type -> Type
 tArr p xs r = Term $ TArr p xs r

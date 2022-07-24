@@ -2,7 +2,7 @@
 module Prog.Infer where
 
 import Control.Monad.Catch
-import Control.Monad.Writer
+import Control.Monad.Writer (tell, MonadWriter, join)
 import Data.Functor.Compose
 import Data.Foldable (for_)
 import Data.Traversable (for)
@@ -18,6 +18,11 @@ import Debug.Trace
 data RecordError
   = NoField         P Name Type           -- ^ There is no such field in the record.
   | NonRecordAccess P Name Type           -- ^ Field access on non-record.
+  deriving stock    (Show)
+  deriving anyclass (Exception)
+
+data UnionError
+  = NotACtorType    P Type
   deriving stock    (Show)
   deriving anyclass (Exception)
 
@@ -48,38 +53,58 @@ inferType = \case
     return r
 
   Lam p as b -> do
-    argTy <- for as \_ -> freshType
-    for_ argTy \t -> do
-      k <- inferKind t
-      _ <- unify p k (kStar p)
-      return ()
+    argTy <- for as \a -> do
+      t <- freshType
+      return (a, t)
 
-    t <- withMonotypes (zip as argTy) do  -- Use them while inferring body type.
+    for_ argTy \n@(Name p' _, t) -> do
+      k <- inferKind t
+      _ <- unify p' k (kStar p')
+      return (n, t)
+
+    t <- withMonotypes argTy do  -- Use them while inferring body type.
       inferType b
 
-    return $ tArr p argTy t
+    return $ tArr p (map snd argTy) t
 
   Let i ds b -> do
+    let nts   = [nt    | TDecl  nt   <- ds]
     let vals  = [val   | Decl  val   <- ds]
     let aliai = [alias | Alias alias <- ds]
 
-    for_ aliai \(TAlias _ n t) -> do
-      TName n =: t
+    (dks, dts) <- unzip <$> for nts \(Newtype i' n args ctors) -> do
+      let ctorReturnTy = foldl (tApp i') (tCon' i' n) (map (Var . TName) args)
 
-    let ns = [n | Val _ n _ <- vals]
+      kvars <- traverse (const freshType) args
+      let
+        deltaKinds = (n, monotype $ foldr (kArr i') (kStar i') kvars)
 
-    withFreshMonotypesFor @Type_ @TName ns do
+      deltaTypes <- for ctors \(Ctor i'' n' t) -> do
+        let type_ = tArr i'' [t] ctorReturnTy
+        qtype <- generalise type_
+        return (n', qtype)
 
-      tys <- for vals \(Val _ n p) -> do    -- Try inferType recursive bindings.
-        t <- inferType p
-        k <- inferKind t
-        _ <- unify i k (kStar i)
-        return (n, t)
+      return (deltaKinds, deltaTypes)
 
-      qtys <- (traverse.traverse) generalise tys
+    withPolytypes dks do
+      withPolytypes (join dts) do
+        for_ aliai \(TAlias _ n t) -> do
+          TName n =: t
 
-      withPolytypes qtys do         -- Re-push them generalised,
-        inferType b                     -- inferType body.
+        let ns = [n | Val _ n _ <- vals]
+
+        withFreshMonotypesFor @Type_ @TName ns do
+
+          tys <- for vals \(Val _ n p) -> do    -- Try inferType recursive bindings.
+            t <- inferType p
+            k <- inferKind t
+            _ <- unify i k (kStar i)
+            return (n, t)
+
+          qtys <- (traverse.traverse) generalise tys
+
+          withPolytypes qtys do         -- Re-push them generalised,
+            inferType b                     -- inferType body.
 
   Int p _ -> return $ tCon p "Int"
   Txt p _ -> return $ tCon p "String"
@@ -132,9 +157,13 @@ inferType = \case
 
   Ann i p t -> do
     t' <- inferType p
+    k <- inferKind t'
+    _ <- unify i k (kStar i)
     unify i t' t
 
-  FFI _ t -> do
+  FFI p t -> do
+    k <- inferKind t
+    _ <- unify p k (kStar p)
     return t
 
   Map i fs -> do
@@ -149,6 +178,62 @@ inferType = \case
       return (tk, tv)
 
     return $ tApp i (tApp i (tCon i "Map") tkr) tvr
+
+  Mtc _ p alts -> do
+    tp  <- inferType p
+    res <- freshType
+    for_ alts \alt -> do
+      tAlt <- inferTypeAlt tp alt
+      unify (aInfo alt) res tAlt
+    return res
+
+inferTypeAlt
+  :: ( CanUnify P        Type_ TName Int m
+     , CanUnify P        Kind_ KName Int m
+     , HasContext   Name Type_ TName m
+     , HasContext  TName Kind_ KName m
+     , MonadWriter [(Name, Type)] m
+     )
+  => Type -> Alt -> m Type
+inferTypeAlt t (Alt _ pat p) = do
+  bindings <- bind t pat
+  withMonotypes bindings do
+    inferType p
+
+bind
+  :: ( CanUnify P        Type_ TName Int m
+     , CanUnify P        Kind_ KName Int m
+     , HasContext   Name Type_ TName m
+     , HasContext  TName Kind_ KName m
+     , MonadWriter [(Name, Type)] m
+     )
+  => Type -> Pat -> m [(Name, Type)]
+bind t = \case
+  PVar _ n -> do
+    return [(n, t)]
+
+  PCtor i n pat -> do
+    t'  <- findVar i n
+    t'' <- freshType
+    _   <- unify i t' (tArr i [t''] t)
+    bind t'' pat
+
+  PRec i fs -> do
+    (fs', binds) <- unzip <$> for fs \(n, pat) -> do
+      res <- freshType
+      binds <- bind res pat
+      return ((n, res), binds)
+
+    _ <- unify i t (tRec i fs')
+    return (join binds)
+
+  PInt i _ -> do
+    _ <- unify i t (tCon i "Int")
+    return []
+
+  PTxt i _ -> do
+    _ <- unify i t (tCon i "String")
+    return []
 
 inferKind
   :: ( CanUnify P Kind_ KName Int m

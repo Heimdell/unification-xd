@@ -53,6 +53,11 @@ parseProg = \case
     fs <- traverse parsePairs pairs
     return $ Map p fs
 
+  Lst i (Sym _ "case" : p : alts) -> do
+    p'    <- parseProg p
+    alts' <- traverse parseAlt alts
+    return $ Mtc i p' alts'
+
   Lst p [] -> do
     return $ U p
 
@@ -70,6 +75,51 @@ parseProg = \case
     f'  <- parseProg f
     xs' <- traverse parseProg xs
     return $ App p f' xs'
+
+parseAlt :: SExpr -> Either String Alt
+parseAlt = \case
+  Lst i [pat, prog] -> do
+    pat'  <- parsePat  pat
+    prog' <- parseProg prog
+    return $ Alt i pat' prog'
+  s -> Left $ "expected (pat prog) at " ++ show (unI (sPos s))
+
+parsePat :: SExpr -> Either String Pat
+parsePat = \case
+  n@(Sym i _) -> do
+    n' <- parseName n
+    return $ PVar i n'
+
+  Lst i (Sym _ "rec" : patFields) -> do
+    patFields' <- traverse parsePatFields patFields
+    return $ PRec i patFields'
+
+  Lst i [n, pat] -> do
+    n'   <- parseName n
+    pat' <- parsePat  pat
+    return $ PCtor i n' pat'
+
+  Num p n -> do
+    return $ PInt p n
+
+  Str p n -> do
+    return $ PTxt p n
+
+  s -> Left $ "expected pat at " ++ show (unI (sPos s))
+
+parsePatFields :: SExpr -> Either String (Name, Pat)
+parsePatFields = \case
+  Lst _ [n, pat] -> do
+    n'   <- parseName n
+    pat' <- parsePat  pat
+    return (n', pat')
+
+  n@Sym {} -> do
+    n'   <- parseName n
+    pat' <- parsePat n
+    return (n', pat')
+
+  s -> Left $ "expected (name pat) or name at " ++ show (unI (sPos s))
 
 parsePairs :: SExpr -> Either String (Prog, Prog)
 parsePairs = \case
@@ -122,16 +172,30 @@ parseTypeFields = \case
 
 parseDecls :: SExpr -> Either String Decl
 parseDecls = \case
-  Lst p [x, body] -> do
-    n <- parseName x
-    b <- parseProg body
-    return $ Decl $ Val p n b
   Lst p [Sym _ "type", n, ty] -> do
     n'  <- parseName n
     ty' <- parseType ty
     return $ Alias $ TAlias p n' ty'
+  Lst p [Sym _ "newtype", Sym p' ('#':n'), Lst _ args, Lst _ ctors] -> do
+    n''    <- parseName (Sym p' n')
+    args'  <- traverse parseName args
+    ctors' <- traverse parseCtor ctors
+    return $ TDecl $ Newtype p (TName n'') args' ctors'
+  Lst p [x, body] -> do
+    n <- parseName x
+    b <- parseProg body
+    return $ Decl $ Val p n b
   s -> do
-    Left $ "expected (name prog) at " ++ show (unI (sPos s))
+    Left $ "expected (name prog) at " ++ show (unI (sPos s)) ++ ", not " ++ show s
+
+parseCtor :: SExpr -> Either String Ctor
+parseCtor = \case
+  Lst p [n, t] -> do
+    n' <- parseName n
+    t' <- parseType t
+    return $ Ctor p n' t'
+  s -> do
+    Left $ "expected (name type) at " ++ show (unI (sPos s))
 
 parseName :: SExpr -> Either String Name
 parseName = \case
