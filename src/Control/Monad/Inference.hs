@@ -22,8 +22,8 @@ module Control.Monad.Inference
   -- * Contexts & inference
   , Context
   , HasContext (..)
-  , CanInfer
-  , CanInfer'
+  , CanUnify
+  , CanUnify'
   , findVar
   , getContext
   , withFreshMonotypesFor
@@ -45,6 +45,7 @@ import Data.Map (Map)
 import Data.Set qualified as Set
 import Data.Set (Set)
 import Data.Traversable (for)
+import Data.Typeable (Typeable)
 import Data.Foldable (fold)
 import GHC.Generics
 
@@ -321,7 +322,7 @@ deriving stock instance (Ord (term (Term term var)), Ord var) => Ord (QTerm term
 -}
 generalise
   :: forall m store term var
-  .  (CanInfer' term var store m)
+  .  (CanUnify' term var store m)
   => Term term var -> m (QTerm term var)
 generalise t = do
   vs <- getFreeVars t
@@ -336,7 +337,7 @@ monotype = Forall []
 -}
 instantiate
   :: forall m store pos term var
-  .  (CanInfer pos term var store m)
+  .  (CanUnify pos term var store m)
   => pos -> QTerm term var -> m (Term term var)
 instantiate _ (Forall [] t) = return t
 instantiate p (Forall _ t) = do
@@ -346,7 +347,7 @@ instantiate p (Forall _ t) = do
 -}
 applyBindings
   :: forall m store pos term var
-  .  (CanInfer pos term var store m)
+  .  (CanUnify pos term var store m)
   => pos -> Term term var -> m (Term term var)
 applyBindings p t = snd <$> applyBindingsAll p ((), t)
 
@@ -354,7 +355,7 @@ applyBindings p t = snd <$> applyBindingsAll p ((), t)
 -}
 applyBindingsAll
   :: forall m store pos term var list
-  .  (CanInfer pos term var store m, Traversable list)
+  .  (CanUnify pos term var store m, Traversable list)
   => pos -> list (Term term var) -> m (list (Term term var))
 applyBindingsAll p list = do
   evalStateT (traverse loop list) Map.empty
@@ -365,7 +366,7 @@ applyBindingsAll p list = do
 -}
 refreshVars
   :: forall m store pos term var
-  .  (CanInfer pos term var store m)
+  .  (CanUnify pos term var store m)
   => pos -> Term term var -> m (Term term var)
 refreshVars p t = do
   ((), t') <- refreshVarsAll p ((), t)
@@ -375,7 +376,7 @@ refreshVars p t = do
 -}
 refreshVarsAll
   :: forall m store pos term var list
-  .  (CanInfer pos term var store m, Traversable list)
+  .  (CanUnify pos term var store m, Traversable list)
   => pos -> list (Term term var) -> m (list (Term term var))
 refreshVarsAll p list = do
   evalStateT (traverse loop list) Map.empty
@@ -398,7 +399,7 @@ refreshVarsAll p list = do
 -}
 unify
   :: forall m store pos term var
-  .  (CanInfer pos term var store m)
+  .  (CanUnify pos term var store m)
   => pos -> Term term var -> Term term var -> m (Term term var)
 unify p tl0' tr0' =
   visitedSet do
@@ -482,27 +483,26 @@ data Undefined pos n = Undefined pos n                -- ^ Variable was not decl
   deriving stock (Show)
   deriving anyclass (Exception)
 
-class HasContext t v m where
-  askContext :: m (Context t v)
-  localContext :: (Context t v -> Context t v) -> m a -> m a
+class (Ord v', Show v', Typeable v', Monad m) => HasContext v' t v m where
+  askContext :: m (Context v' t v)
+  localContext :: (Context v' t v -> Context v' t v) -> m a -> m a
 
 {- | Umbrella-style context that allows machinery from this module to work.
 -}
-type CanInfer' term var store m =
-  ( HasContext term var m
-  , MonadThrow m
+type CanUnify' term var store m =
+  ( MonadThrow m
   , BindingMonad m store term var
   )
 
 {- | Umbrella-style context that allows machinery from this module to work.
 -}
-type CanInfer pos term var store m =
-  ( CanInfer' term var store m
+type CanUnify pos term var store m =
+  ( CanUnify' term var store m
   , CanThrowUError pos term var
   )
 {- | @Var : Type@ relation.
 -}
-type Context term var = Map var (QTerm term var)
+type Context var' term var = Map var' (QTerm term var)
 
 {- | Lookup for a variable.
 
@@ -510,7 +510,7 @@ type Context term var = Map var (QTerm term var)
 
      Otherwise, throw `Undefined` with given position.
 -}
-findVar :: (CanInfer pos term var store m) => pos -> var -> m (Term term var)
+findVar :: (CanUnify pos term var store m, HasContext var' term var m) => pos -> var' -> m (Term term var)
 findVar p n = do
   Map.lookup n <$> askContext >>= \case
     Nothing -> throwM $ Undefined p n
@@ -518,7 +518,7 @@ findVar p n = do
 
 {- | Generate fresh monotypes for given names.
 -}
-withFreshMonotypesFor :: forall term var store m a. (CanInfer' term var store m) => [var] -> m a -> m a
+withFreshMonotypesFor :: forall term var var' store m a. (CanUnify' term var store m, HasContext var' term var m) => [var'] -> m a -> m a
 withFreshMonotypesFor names act = do
   delta <- for names \n -> do
     t <- freshType @m @term @var
@@ -528,19 +528,19 @@ withFreshMonotypesFor names act = do
 
 {- | Add some monotyped declaration into the context.
 -}
-withMonotypes :: (CanInfer' term var store m) => [(var, Term term var)] -> m a -> m a
+withMonotypes :: (CanUnify' term var store m, HasContext var' term var m) => [(var', Term term var)] -> m a -> m a
 withMonotypes delta = do
   withPolytypes $ (fmap.fmap) monotype delta
 
 {- | Add some polytyped declaration into the context.
 -}
-withPolytypes :: (CanInfer' term var store m) => [(var, QTerm term var)] -> m a -> m a
+withPolytypes :: (CanUnify' term var store m, HasContext var' term var m) => [(var', QTerm term var)] -> m a -> m a
 withPolytypes delta act = do
   let dCtx = Map.fromList delta
   localContext (dCtx <>) do
     act
 
-getContext :: forall t v s m. (CanInfer' t v s m) => m [v]
+getContext :: forall v' t v m. (HasContext v' t v m) => m [v']
 getContext = do
-  ctx <- askContext @t
+  ctx <- askContext @v' @t @v
   return (Map.keys ctx)

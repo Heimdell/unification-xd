@@ -24,18 +24,20 @@ data RecordError
 {- | Infer type of the program.
 -}
 inferType
-  :: ( CanInfer P Type_ TName Int m
-     , CanInfer P Kind_ KName Int m
-     , MonadWriter [(TName, Type)] m
+  :: ( CanUnify P        Type_ TName Int m
+     , CanUnify P        Kind_ KName Int m
+     , HasContext   Name Type_ TName m
+     , HasContext  TName Kind_ KName m
+     , MonadWriter [(Name, Type)] m
      )
   => Prog
   -> m Type
 inferType = \case
   V p n -> do
-    t <- findVar p (TName n)
-    k <- inferKind t
-    _ <- unify p k (kStar p)
-    tell [(TName n, t)]
+    t <- findVar p n
+    -- k <- inferKind t
+    -- _ <- unify p k (kStar p)
+    tell [(n, t)]
     return t
 
   App p f xs -> do
@@ -52,7 +54,7 @@ inferType = \case
       _ <- unify p k (kStar p)
       return ()
 
-    t <- withMonotypes (zip (map TName as) argTy) do  -- Use them while inferring body type.
+    t <- withMonotypes (zip as argTy) do  -- Use them while inferring body type.
       inferType b
 
     return $ tArr p argTy t
@@ -66,13 +68,13 @@ inferType = \case
 
     let ns = [n | Val _ n _ <- vals]
 
-    withFreshMonotypesFor @Type_ (map TName ns) do
+    withFreshMonotypesFor @Type_ @TName ns do
 
       tys <- for vals \(Val _ n p) -> do    -- Try inferType recursive bindings.
         t <- inferType p
         k <- inferKind t
         _ <- unify i k (kStar i)
-        return (TName n, t)
+        return (n, t)
 
       qtys <- (traverse.traverse) generalise tys
 
@@ -149,15 +151,15 @@ inferType = \case
     return $ tApp i (tApp i (tCon i "Map") tkr) tvr
 
 inferKind
-  :: ( CanInfer P Kind_ KName Int m
-     , CanInfer P Type_ TName Int m
+  :: ( CanUnify P Kind_ KName Int m
+     , HasContext  TName Kind_ KName m
      )
   => Type
   -> m Kind
 inferKind = \case
   Term term -> case term of
-    TCon p (TName n) -> do
-      findVar p (KName n)
+    TCon p n -> do
+      findVar p n
 
     TRec p fs -> do
       for_ fs \(_, t) -> do

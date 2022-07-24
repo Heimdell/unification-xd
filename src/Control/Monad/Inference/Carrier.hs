@@ -11,6 +11,7 @@ import Control.Monad.RWS
 import Control.Monad.Catch
 import Data.Map qualified as Map
 import Data.Map (Map)
+import Data.Typeable (Typeable)
 
 import Control.Monad.Inference
 import Data.Product
@@ -55,7 +56,7 @@ instance (Monoid w) => MonadTrans (InferT r w s) where
 runInferT :: r -> s -> InferT r w s m a -> m (a, s, w)
 runInferT r s act = runRWST (unInferT act) r s
 
-instance (HasElem (Context t v) r, Monad m, Monoid w) => HasContext t v (InferT r w s m) where
+instance (Ord v', Show v', Typeable v', HasElem (Context v' t v) r, Monad m, Monoid w) => HasContext v' t v (InferT r w s m) where
   askContext = InferT do asks getElem
 
   localContext f act = InferT do local (modElem f) $ unInferT act

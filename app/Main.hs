@@ -13,7 +13,7 @@ import Data.Map qualified as Map
 import Ignore
 import Pos
 import SExpr (parseSExpr)
-import Prog (parseProg, inferType, Type_, TName, Kind_, KName (..), kStar, kArr, Name (..))
+import Prog (parseProg, inferType, Type_, KName, Kind_, TName (..), kStar, kArr, Name (..))
 
 main :: IO ()
 main = do
@@ -27,14 +27,18 @@ main = do
           putStrLn "\n==== Type ===="
 
           let
-            context :: Product [Context Type_ TName, Context Kind_ KName]
+            star  = kStar (I nowhere)
+            arr   = kArr  (I nowhere)
+            tname = TName . Name (I nowhere)
+
+            context :: Product [Context Name Type_ TName, Context TName Kind_ KName]
             context
               =  mempty
               :* Map.fromList
-                [ (KName (Name (I nowhere) "Int"),    monotype $ kStar (I nowhere))
-                , (KName (Name (I nowhere) "String"), monotype $ kStar (I nowhere))
-                , (KName (Name (I nowhere) "Unit"),   monotype $ kStar (I nowhere))
-                , (KName (Name (I nowhere) "Map"),    monotype $ kArr (I nowhere) (kStar (I nowhere)) (kArr (I nowhere) (kStar (I nowhere)) (kStar (I nowhere))))
+                [ (tname "Int",    monotype star)
+                , (tname "String", monotype star)
+                , (tname "Unit",   monotype star)
+                , (tname "Map",    monotype $ star `arr` (star `arr` star))
                 ]
               :* Empty
 
