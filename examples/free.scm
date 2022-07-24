@@ -1,4 +1,3 @@
-
 (let
   ( ; data List =
     (newtype #List (a)
@@ -22,22 +21,22 @@
 (let
   ( ; pure = \x => cons x nil
     (pure (fun (x) (cons x nil)))
-
-    ; fold =
-    (fold
-      ; \op, zero, list =>
-      (fun (op zero list)
-        (case list
-          ; | Cons {head, tail} => ...
-          ((Cons (rec head tail)) (op head (fold op zero tail)))
-          ; | Nil _ => ...
-          ((Nil  u)               zero))
+  )
+(let
+  (
+    (newtype #Free (f a)
+      ( (Free (rec (un (f (#Free f a)))))
+        (Pure a)
       )
     )
+
+    (free (fun (f) (Free (rec (un f)))))
   )
 
-(let ( (append (fun (xs ys) (fold cons ys xs))) )
-(let ( (join   (fun (lists) (fold append nil lists))) )
-(let ( (two    (fold + 0 (join (pure (pure 2))))) )
-  two
-)))))
+(let
+  (
+    (tree (free (pure (Pure 2))))
+  )
+
+  tree
+))))
