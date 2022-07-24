@@ -1,7 +1,8 @@
 
 (let
-  ((+ (ffi (fun ((map #Int #String) (map #Int #String)) (map #Int #sString))))
+  ((+     (ffi (fun (((#Map #Int) #String) ((#Map #Int) #String)) ((#Map #Int) #String))))
+   (index (ffi (fun (k (#Map k v)) v)))
   )
 
-  (+ (map) (map))
+  (index 0 (+ (map) (map)))
 )

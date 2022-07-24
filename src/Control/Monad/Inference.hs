@@ -21,9 +21,11 @@ module Control.Monad.Inference
 
   -- * Contexts & inference
   , Context
+  , HasContext (..)
   , CanInfer
   , CanInfer'
   , findVar
+  , getContext
   , withFreshMonotypesFor
   , withMonotypes
   , withPolytypes
@@ -37,7 +39,6 @@ module Control.Monad.Inference
   ) where
 
 import Control.Monad.State
-import Control.Monad.Reader
 import Control.Monad.Catch
 import Data.Map qualified as Map
 import Data.Map (Map)
@@ -132,7 +133,7 @@ instance {-# OVERLAPPABLE #-}
 
 {- | Generate fresh type variable.
 -}
-freshType :: MonadRefresh m var => m (Term term var)
+freshType :: forall m term var. MonadRefresh m var => m (Term term var)
 freshType = Var <$> fresh
 
 {- | Variable, can be uniquely generated from some predefined store.
@@ -148,9 +149,7 @@ class
   , MonadRefresh m var
   )
   => BindingMonad m store term var
-  | m term -> var
-  , m var  -> term
-  , var    -> store
+  | var -> store
   where
     {- | Find binding for type variable, if any.
     -}
@@ -483,10 +482,14 @@ data Undefined pos n = Undefined pos n                -- ^ Variable was not decl
   deriving stock (Show)
   deriving anyclass (Exception)
 
+class HasContext t v m where
+  askContext :: m (Context t v)
+  localContext :: (Context t v -> Context t v) -> m a -> m a
+
 {- | Umbrella-style context that allows machinery from this module to work.
 -}
 type CanInfer' term var store m =
-  ( MonadReader (Context term var) m
+  ( HasContext term var m
   , MonadThrow m
   , BindingMonad m store term var
   )
@@ -509,34 +512,35 @@ type Context term var = Map var (QTerm term var)
 -}
 findVar :: (CanInfer pos term var store m) => pos -> var -> m (Term term var)
 findVar p n = do
-  asks (Map.lookup n) >>= \case
+  Map.lookup n <$> askContext >>= \case
     Nothing -> throwM $ Undefined p n
     Just qt -> instantiate p qt
 
 {- | Generate fresh monotypes for given names.
 -}
-withFreshMonotypesFor :: (CanInfer' term var store m) => [var] -> m a -> m a
+withFreshMonotypesFor :: forall term var store m a. (CanInfer' term var store m) => [var] -> m a -> m a
 withFreshMonotypesFor names act = do
   delta <- for names \n -> do
-    t <- freshType
+    t <- freshType @m @term @var
     return (n, t)
 
-  let dCtx = Map.fromList $ (fmap.fmap) monotype delta
-  local (dCtx <>) do
-    act
+  withMonotypes delta act
 
 {- | Add some monotyped declaration into the context.
 -}
 withMonotypes :: (CanInfer' term var store m) => [(var, Term term var)] -> m a -> m a
-withMonotypes delta act = do
-  let dCtx = Map.fromList $ (fmap.fmap) monotype delta
-  local (dCtx <>) do
-    act
+withMonotypes delta = do
+  withPolytypes $ (fmap.fmap) monotype delta
 
 {- | Add some polytyped declaration into the context.
 -}
 withPolytypes :: (CanInfer' term var store m) => [(var, QTerm term var)] -> m a -> m a
 withPolytypes delta act = do
   let dCtx = Map.fromList delta
-  local (dCtx <>) do
+  localContext (dCtx <>) do
     act
+
+getContext :: forall t v s m. (CanInfer' t v s m) => m [v]
+getContext = do
+  ctx <- askContext @t
+  return (Map.keys ctx)

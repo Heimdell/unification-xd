@@ -92,24 +92,23 @@ parseType = \case
   Lst p [Sym _ "fun", Lst _ tyArgs, ty] -> do
     as <- traverse parseType tyArgs
     t  <- parseType ty
-    return $ Term $ TArr p as t
-
-  Lst p [Sym _ "map", k, v] -> do
-    k' <- parseType k
-    v' <- parseType v
-    return $ Term $ TMap p k' v'
+    return $ tArr p as t
 
   Lst p (Sym _ "rec" : fields) -> do
     fs <- traverse parseTypeFields fields
     return $ Term $ TRec p fs
 
+  Lst p (f : xs) -> do
+    f'  <- parseType f
+    xs' <- traverse parseType xs
+    return $ foldl (tApp p) f' xs'
+
   Sym p ('#' : n) -> do
-    n' <- parseName (Sym p n)
-    return $ Term $ TCon p n'
+    return $ tCon p n
 
   s@Sym {} -> do
     n <- parseName s
-    return $ Var n
+    return $ Var $ TName n
 
   s -> Left $ "expected type at " ++ show (unI (sPos s))
 

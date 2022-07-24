@@ -58,7 +58,7 @@ instance Variable Int Name where
 
 {- | A type. Uses `Name`s as variables.
 -}
-type Type = Term Type_ Name
+type Type = Term Type_ TName
 
 {- | A carrier functor for type.
 
@@ -66,21 +66,58 @@ type Type = Term Type_ Name
      for free.
 -}
 data Type_ t
-  = TCon P Name
+  = TCon P TName
   | TArr P [t] t
   | TRec P [(Name, t)]
-  | TMap P t t
+  | TApp P t t
   deriving stock (Functor, Foldable, Traversable, Generic1)
   deriving anyclass (Unifiable)
+
+type Kind = Term Kind_ KName
+
+data Kind_ k
+  = KStar P
+  | KArr  P k k
+  deriving stock (Eq, Functor, Foldable, Traversable, Generic1)
+  deriving anyclass (Unifiable)
+
+kStar :: P -> Kind
+kStar = Term . KStar
+
+kArr :: P -> Kind -> Kind -> Kind
+kArr p d c = Term $ KArr p d c
+
+newtype KName = KName { unKName :: Name }
+  deriving newtype (Eq, Ord, Show, Variable Int)
+
+newtype TName = TName { unTName :: Name }
+  deriving newtype (Eq, Ord, Show, Variable Int)
+
+tCon :: P -> String -> Type
+tCon p n = Term $ TCon p (TName $ Name p n)
+
+tArr :: P -> [Type] -> Type -> Type
+tArr p xs r = Term $ TArr p xs r
+
+tApp :: P -> Type -> Type -> Type
+tApp p xs r = Term $ TApp p xs r
+
+tRec :: P -> [(Name, Type)] -> Type
+tRec p fs = Term $ TRec p fs
 
 instance Show a => Show (Type_ a) where
   show = \case
     TCon _ n    -> "#" ++ show n
     TArr _ as r -> "(fun " ++ unwords (map show as) ++ " -> " ++ show r ++ ")"
     TRec _ fs   -> "{" ++ intercalate ", " (map show' fs) ++ "}"
-    TMap _ k v  -> "(Map " ++ show k ++ " " ++ show v ++ ")"
+    TApp _ f x  -> "(" ++ show f ++ " " ++ show x ++ ")"
    where
     show' (n, t) = show n ++ ": " ++ show t
+
+instance Show a => Show (Kind_ a) where
+  show = \case
+    KStar _    -> "*"
+    KArr _ d c -> "(" ++ show d ++ " -> " ++ show c ++ ")"
 
 deriving anyclass instance Eq a => Unifiable ((,) a)
 deriving anyclass instance         Unifiable []
