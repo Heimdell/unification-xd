@@ -5,7 +5,7 @@ import System.Environment (getArgs)
 import Debug.Trace
 
 import Control.Monad.Writer (listen, censor, tell)
-import Control.Monad.Inference (applyBindings, Context, getContext, monotype)
+import Control.Monad.Inference (applyBindings, Context, monotype)
 import Control.Monad.Inference.Carrier (runInferT, UState, Product (..), UState (..))
 import Data.Foldable (for_)
 import Data.Map qualified as Map

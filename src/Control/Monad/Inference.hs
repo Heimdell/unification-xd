@@ -1,4 +1,7 @@
 {-# language MonoLocalBinds #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use <$>" #-}
+{-# HLINT ignore "Redundant <$>" #-}
 
 {- | Various handles to piece together a Rank1 type inference.
 -}
@@ -360,7 +363,7 @@ applyBindingsAll
 applyBindingsAll p list = do
   evalStateT (traverse loop list) Map.empty
   where
-    loop = visitOnce p (return . Var) \_ -> loop
+    loop = visitOnce p (return . Var) (const loop)
 
 {- | Refresh all variables.
 -}
@@ -400,10 +403,11 @@ refreshVarsAll p list = do
 unify
   :: forall m store pos term var
   .  (CanUnify pos term var store m)
-  => pos -> Term term var -> Term term var -> m (Term term var)
-unify p tl0' tr0' =
-  visitedSet do
+  => pos -> Term term var -> Term term var -> m ()
+unify p tl0' tr0' = do
+  _ <- visitedSet do
     loop tl0' tr0'
+  return ()
 
   where
     loop :: Term term var -> Term term var -> VisitedSetT term var m (Term term var)

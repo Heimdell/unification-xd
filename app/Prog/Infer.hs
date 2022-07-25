@@ -41,7 +41,7 @@ inferType = \case
   V p n -> do
     t <- findVar p n
     -- k <- inferKind t
-    -- _ <- unify p k (kStar p)
+    -- unify p k (kStar p)
     tell [(n, t)]
     return t
 
@@ -59,7 +59,7 @@ inferType = \case
 
     for_ argTy \n@(Name p' _, t) -> do
       k <- inferKind t
-      _ <- unify p' k (kStar p')
+      unify p' k (kStar p')
       return (n, t)
 
     t <- withMonotypes argTy do  -- Use them while inferring body type.
@@ -98,7 +98,7 @@ inferType = \case
           tys <- for vals \(Val _ n p) -> do    -- Try inferType recursive bindings.
             t <- inferType p
             k <- inferKind t
-            _ <- unify i k (kStar i)
+            unify i k (kStar i)
             return (n, t)
 
           qtys <- (traverse.traverse) generalise tys
@@ -113,7 +113,7 @@ inferType = \case
     Compose fTys <- traverse inferType (Compose fs)
     for_ (Compose fTys) \t -> do
       k <- inferKind t
-      _ <- unify p k (kStar p)
+      unify p k (kStar p)
       return ()
     return $ tRec p fTys
 
@@ -136,7 +136,9 @@ inferType = \case
       Term (TRec _ fTys) -> do
         case lookup f fTys of
           Nothing  -> throwM $ NoField p f t'
-          Just t'' -> unify p t'' v'
+          Just t'' -> do
+            unify p t'' v'
+            return v'
 
       _ -> throwM $ NonRecordAccess p f t
 
@@ -148,7 +150,7 @@ inferType = \case
 
   Seq i (p : ps) -> do
     t <- inferType p
-    _ <- unify (pInfo p)
+    unify (pInfo p)
       do tCon (I nowhere) "Unit"
       t  -- Unused stuff must be voided.
     inferType (Seq i ps)
@@ -157,13 +159,14 @@ inferType = \case
 
   Ann i p t -> do
     t' <- inferType p
-    k <- inferKind t'
-    _ <- unify i k (kStar i)
+    k  <- inferKind t'
+    unify i k (kStar i)
     unify i t' t
+    return t'
 
   FFI p t -> do
     k <- inferKind t
-    _ <- unify p k (kStar p)
+    unify p k (kStar p)
     return t
 
   Map i fs -> do
@@ -173,8 +176,8 @@ inferType = \case
     for_ fs \(k, v) -> do
       tk <- inferType k
       tv <- inferType v
-      _  <- unify (pInfo k) tkr tk
-      _  <- unify (pInfo v) tvr tv
+      unify (pInfo k) tkr tk
+      unify (pInfo v) tvr tv
       return (tk, tv)
 
     return $ tApp i (tApp i (tCon i "Map") tkr) tvr
@@ -224,15 +227,15 @@ bind t = \case
       binds <- bind res pat
       return ((n, res), binds)
 
-    _ <- unify i t (tRec i fs')
+    unify i t (tRec i fs')
     return (join binds)
 
   PInt i _ -> do
-    _ <- unify i t (tCon i "Int")
+    unify i t (tCon i "Int")
     return []
 
   PTxt i _ -> do
-    _ <- unify i t (tCon i "String")
+    unify i t (tCon i "String")
     return []
 
 inferKind
@@ -262,7 +265,7 @@ inferKind = \case
       kf <- inferKind f
       kx <- inferKind x
       kr <- freshType
-      _ <- unify p kf (kArr p kx kr)
+      unify p kf (kArr p kx kr)
       return kr
 
   Var (TName n) -> do
