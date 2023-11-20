@@ -1,0 +1,25 @@
+
+name: unification-xd
+
+default-extensions:
+- LambdaCase
+- BlockArguments
+- OverloadedRecordDot
+- DefaultSignatures
+- DerivingStrategies
+- DeriveFunctor
+- DeriveFoldable
+- DeriveTraversable
+- NoFieldSelectors
+- UndecidableInstances
+
+language: GHC2021
+
+dependencies:
+- base
+- mtl
+- containers
+
+library:
+  source-dirs:
+  - src
