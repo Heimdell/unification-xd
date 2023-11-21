@@ -160,10 +160,10 @@ unify expected got = do
   case (expected, got) of
     (Var left, Var right) -> do
       unless (left == right) do          -- different variables are merged
-        left =: Var right
+        left =:: Var right
 
-    (Var var, term)    -> var =: term    -- occurs-check + assign
-    (term,    Var var) -> var =: term    -- -"-
+    (Var var, term)    -> var =:: term    -- occurs-check + assign
+    (term,    Var var) -> var =:: term    -- -"-
 
     (Struct left, Struct right) -> do
       case match left right of           -- match outer redex
