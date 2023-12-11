@@ -12,6 +12,7 @@ library
   exposed-modules:
       Control.Unification
       Control.Unification.Error
+      Control.Unification.Scheme
       Control.Unification.Term
       Control.Unification.Unifiable
       Control.Unification.Unify

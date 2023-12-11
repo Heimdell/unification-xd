@@ -14,3 +14,8 @@ import Control.Unification.Unify     as M
   , (=:=)
   , apply
   )
+import Control.Unification.Scheme    as M
+  ( Scheme(..)
+  , instantiate
+  , generalise
+  )

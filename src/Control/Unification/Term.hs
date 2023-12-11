@@ -46,3 +46,12 @@ instance (Ord v, Ord (t (Term t v))) => Ord (Term t v) where
   Struct t `compare` Struct u = t `compare` u
   Var    _ `compare` Struct _ = LT
   _        `compare` _        = GT
+
+instance (Functor t) => Applicative (Term t) where
+  pure  = Var
+  (<*>) = ap
+
+instance (Functor t) => Monad (Term t) where
+  ma >>= k = case ma of
+    Var    a -> k a
+    Struct t -> Struct $ fmap (>>= k) t
