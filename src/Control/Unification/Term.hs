@@ -35,3 +35,14 @@ instance (Show v, Show (t (Term t v))) => Show (Term t v) where
 -}
 allVars :: (Ord v, Foldable t) => Term t v -> Set.Set v
 allVars = foldMap Set.singleton
+
+instance (Eq v, Eq (t (Term t v))) => Eq (Term t v) where
+  Var    a == Var    b = a == b
+  Struct t == Struct u = t == u
+  _        == _        = False
+
+instance (Ord v, Ord (t (Term t v))) => Ord (Term t v) where
+  Var    a `compare` Var    b = a `compare` b
+  Struct t `compare` Struct u = t `compare` u
+  Var    _ `compare` Struct _ = LT
+  _        `compare` _        = GT
