@@ -1,3 +1,4 @@
 dist-newstyle/
 dist-newstyle
 stack.yaml.lock
+.stack-work
