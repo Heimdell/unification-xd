@@ -59,6 +59,8 @@ emptyUnifierState = MkUnifierState
 data Unifies t v m a where
   Apply :: Term t v -> Unifies t v m (Term t v)
   (:=:=) :: Term t v -> Term t v -> Unifies t v m ()
+  Save :: Unifies t v m (UnifierState t v)
+  Restore :: UnifierState t v -> Unifies t v m ()
 
 makeSem ''Unifies
 
@@ -76,8 +78,10 @@ runUnification
   => Sem (Unifies t v : r) a
   -> Sem                r  a
 runUnification = interpret \case
-  Apply t  -> applyImpl t
-  l :=:= r -> unifyImpl l r
+  Apply t   -> applyImpl t
+  l :=:= r  -> unifyImpl l r
+  Save      -> get
+  Restore s -> put s
 
 {-
   Get variable binding, if any.
