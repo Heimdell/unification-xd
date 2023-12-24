@@ -19,3 +19,6 @@ import Control.Unification.Scheme    as M
   , instantiate
   , generalise
   )
+import Control.Unification.Interface  as M
+  ( CanUnify(..)
+  )
