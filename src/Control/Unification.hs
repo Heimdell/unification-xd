@@ -5,21 +5,20 @@
 
 module Control.Unification (module M) where
 
-import Control.Unification.Error     as M (Error(..))
+import Control.Unification.Error     as M (UnificationError(..))
 import Control.Unification.Term      as M (Term(..))
 import Control.Unification.Unifiable as M (Unifiable(..))
 import Control.Unification.Unify     as M
   ( UnifierState, emptyUnifierState
-  , M, runM
   , (=:=)
   , apply
+  , Unifies
+  , runUnification
   )
 import Control.Unification.Scheme    as M
   ( Scheme(..)
   , instantiate
   , generalise
-  , CanRefresh(..)
-  )
-import Control.Unification.Interface  as M
-  ( CanUnify(..)
+  , Refreshes(..)
+  , refresh
   )

@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {- |
   Slight variation on algorithm K.
 
@@ -9,22 +11,24 @@
   all vars in the term being checked.
 -}
 module Control.Unification.Unify
-  ( -- * Unifier state
-    UnifierState, emptyUnifierState
+  -- ( -- * Unifier state
+  --   UnifierState, emptyUnifierState
 
-    -- * Monad
-  , M, runM
+  --   -- * Monad
+  -- , M, runM
 
-    -- * Unifier
-  , (=:=)
+  --   -- * Unifier
+  -- , (=:=)
 
-    -- * Type extractor
-  , apply
-  ) where
+  --   -- * Type extractor
+  -- , apply
+  -- )
+  where
 
 import Control.Monad (when, unless)
-import Control.Monad.State
-import Control.Monad.Except
+import Polysemy
+import Polysemy.State
+import Polysemy.Error
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Foldable (fold, for_)
@@ -52,36 +56,39 @@ emptyUnifierState = MkUnifierState
   , dependencies = Map.empty
   }
 
-{- |
-  Unification monad. ExceptT is above the State, so we the rollback will not
-  destroy latest bindings, which we might use to improve error messages.
--}
-type M t v
-  = ExceptT (Error        t v)
-  ( State   (UnifierState t v))
+data Unifies t v m a where
+  Apply :: Term t v -> Unifies t v m (Term t v)
+  (:=:=) :: Term t v -> Term t v -> Unifies t v m ()
 
-{- |
-  Run unifier. Notice that despite the signature, errors don't cause rollback.
--}
-runM
-  :: M t v a
-  -> UnifierState t v
-  -> Either (Error t v) (a, UnifierState t v)
-runM = (exchange .) . runState . runExceptT
-  where
-    exchange :: (Either e a, s) -> Either e (a, s)
-    exchange (ma, s) = bimap id (, s) ma
+makeSem ''Unifies
+
+type Backend t v r =
+  ( Members
+    '[ State (UnifierState     t v)
+     , Error (UnificationError t v)
+     ] r
+  , Ord v
+  , Unifiable t
+  )
+
+runUnification
+  :: Backend t v r
+  => Sem (Unifies t v : r) a
+  -> Sem                r  a
+runUnification = interpret \case
+  Apply t  -> applyImpl t
+  l :=:= r -> unifyImpl l r
 
 {-
   Get variable binding, if any.
 -}
-find :: (Ord v) => v -> M t v (Maybe (Term t v))
-find v = gets (Map.lookup v . (.bindings))
+find :: Backend t v r => v -> Sem r (Maybe (Term t v))
+find v = gets @(UnifierState _ _) (Map.lookup v . (.bindings))
 
 {-
   Bind the variable to the term.
 -}
-(=:) :: (Ord v) => v -> Term t v -> M t v ()
+(=:) :: Backend t v r => v -> Term t v -> Sem r ()
 var =: term = do
   modify \s -> s
     { bindings = Map.insert var term s.bindings
@@ -90,9 +97,9 @@ var =: term = do
 {-
   Add parents for the variable.
 -}
-(=?) :: (Ord v) => v -> Set.Set v -> M t v ()
+(=?) :: forall t v r. Backend t v r => v -> Set.Set v -> Sem r ()
 var =? parents = do
-  modify \s -> s
+  modify @(UnifierState t v) \s -> s
     { dependencies = Map.insertWith (<>) var parents s.dependencies
     }
 
@@ -108,37 +115,37 @@ var =? parents = do
   If the var being assigned is present in the result check, the term is cyclic
   and therefore is refuted.
 -}
-(=::) :: (Ord v, Traversable t) => v -> Term t v -> M t v ()
+(=::) :: forall t v r. Backend t v r => v -> Term t v -> Sem r ()
 var =:: term = do
-  deps <- gets (.dependencies)
+  deps <- gets @(UnifierState t _) (.dependencies)
   let near    = allVars term
   let allDeps = near <> foldMap (fold . (`Map.lookup` deps)) near
 
   when (var `Set.member` allDeps) do
-    throwError Occurs {var, term}
+    throw Occurs {var, term}
 
   var =: term
-  var =? allDeps
+  (=?) @t var allDeps
 
 {- |
   Apply full sustitution to the term.
 -}
-apply :: (Ord v, Traversable t) => Term t v -> M t v (Term t v)
-apply = \case
+applyImpl :: Backend t v r => Term t v -> Sem r (Term t v)
+applyImpl = \case
   Var var -> do
     find var >>= \case
       Nothing   -> return (Var var)
-      Just term -> apply term
+      Just term -> applyImpl term
 
   Struct struct -> do
-    Struct <$> traverse apply struct
+    Struct <$> traverse applyImpl struct
 
 {-
   If the term is a bound variable, turn either into structural term,
   or into a free variable. Re-bind the bound variable onto result, if it points
   to another variable.
 -}
-contractVarChain :: (Ord v, Traversable t) => Term t v -> M t v (Term t v)
+contractVarChain :: Backend t v r => Term t v -> Sem r (Term t v)
 contractVarChain = \case
   Struct struct -> return (Struct struct)
   Var var -> do
@@ -152,7 +159,7 @@ contractVarChain = \case
 {-
   Core of unification.
 -}
-unify :: (Ord v, Unifiable t) => Term t v -> Term t v -> M t v ()
+unify :: forall t v r. Backend t v r => Term t v -> Term t v -> Sem r ()
 unify expected got = do
   expected <- contractVarChain expected  -- contract both args
   got      <- contractVarChain got
@@ -160,15 +167,15 @@ unify expected got = do
   case (expected, got) of
     (Var left, Var right) -> do
       unless (left == right) do          -- different variables are merged
-        left =:: Var right
+        (=::) @t left (Var right)
 
-    (Var var, term)    -> var =:: term    -- occurs-check + assign
-    (term,    Var var) -> var =:: term    -- -"-
+    (Var var, term)    -> (=::) @t var term    -- occurs-check + assign
+    (term,    Var var) -> (=::) @t var term    -- -"-
 
     (Struct left, Struct right) -> do
       case match left right of           -- match outer redex
         Nothing -> do
-          throwError Mismatch {expected, got}
+          throw Mismatch {expected, got}
 
         Just matched -> do
           for_ matched \(left', right') ->
@@ -180,14 +187,14 @@ unify expected got = do
   Catch and re-throw errors, while applying latest knowledge to the types
   mentioned in the errors.
 -}
-(=:=) :: (Ord v, Unifiable t) => Term t v -> Term t v -> M t v ()
-expected =:= got = do
-  unify expected got `catchError` \case
+unifyImpl :: forall t v r. Backend t v r => Term t v -> Term t v -> Sem r ()
+unifyImpl expected got = do
+  unify expected got `catch` \case
     Occurs {var, term} -> do
-      term <- apply term
-      throwError Occurs {var, term}
+      term <- applyImpl @t @v term
+      throw Occurs {var, term}
 
     Mismatch {expected, got} -> do
-      expected <- apply expected
-      got      <- apply got
-      throwError Mismatch {expected, got}
+      expected <- applyImpl @t @v expected
+      got      <- applyImpl @t @v got
+      throw Mismatch {expected, got}

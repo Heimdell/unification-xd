@@ -2,23 +2,26 @@
 name: unification-xd
 
 default-extensions:
-- LambdaCase
+- AllowAmbiguousTypes
 - BlockArguments
-- OverloadedRecordDot
+- DataKinds
 - DefaultSignatures
-- DerivingStrategies
-- DeriveFunctor
 - DeriveFoldable
+- DeriveFunctor
 - DeriveTraversable
+- DerivingStrategies
+- LambdaCase
 - NoFieldSelectors
+- OverloadedRecordDot
+- TemplateHaskell
 - UndecidableInstances
 
 language: GHC2021
 
 dependencies:
 - base
-- mtl
 - containers
+- polysemy
 
 library:
   source-dirs:

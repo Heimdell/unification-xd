@@ -4,7 +4,8 @@ module Control.Unification.Scheme where
 import Data.Foldable
 import Data.Traversable
 import Data.Map qualified as Map
-import Control.Monad.State
+import Polysemy
+import Polysemy.State
 import Control.Unification.Term
 
 data Scheme t v = Scheme
@@ -15,13 +16,15 @@ data Scheme t v = Scheme
 generalise :: (Ord v, Foldable t) => t v -> Scheme t v
 generalise term = Scheme (toList term) term
 
-class Monad m => CanRefresh m n where
-  refresh :: n -> m n
+data Refreshes n m a where
+  Refresh :: n -> Refreshes n m n
+
+makeSem ''Refreshes
 
 instantiate
-  :: (Ord v, Traversable t, CanRefresh m v)
+  :: (Ord v, Traversable t, Member (Refreshes v) r)
   => Scheme t v
-  -> m (t v)
+  -> Sem r (t v)
 instantiate (Scheme vars body) = do
   vars' <- for vars refresh
   let renames = Map.fromList (zip vars vars')
