@@ -21,6 +21,11 @@ import Control.Unification.Scheme    as M
   ( Scheme(..)
   , instantiate
   , generalise
-  , Refreshes(..)
+  )
+
+import Control.Unification.Name    as M
+  ( Refreshes
+  , runRefreshment
+  , IsName(..)
   , refresh
   )

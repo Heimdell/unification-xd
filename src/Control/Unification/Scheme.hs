@@ -7,6 +7,7 @@ import Data.Map qualified as Map
 import Polysemy
 import Polysemy.State
 import Control.Unification.Term
+import Control.Unification.Name
 
 data Scheme t v = Scheme
   { vars :: [v]
@@ -15,11 +16,6 @@ data Scheme t v = Scheme
 
 generalise :: (Ord v, Foldable t) => t v -> Scheme t v
 generalise term = Scheme (toList term) term
-
-data Refreshes n m a where
-  Refresh :: n -> Refreshes n m n
-
-makeSem ''Refreshes
 
 instantiate
   :: (Ord v, Traversable t, Member (Refreshes v) r)
