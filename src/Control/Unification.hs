@@ -12,6 +12,8 @@ import Control.Unification.Unify     as M
   ( UnifierState, emptyUnifierState
   , (=:=)
   , apply
+  , save
+  , restore
   , Unifies
   , runUnification
   )
