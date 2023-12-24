@@ -5,7 +5,7 @@
 
 module Control.Unification (module M) where
 
-import Control.Unification.Error     as M (UnificationError(..))
+import Control.Unification.Error     as M (Mismatch(..), Occurs(..))
 import Control.Unification.Term      as M (Term(..))
 import Control.Unification.Unifiable as M (Unifiable(..))
 import Control.Unification.Unify     as M

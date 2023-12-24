@@ -66,8 +66,9 @@ makeSem ''Unifies
 
 type Backend t v r =
   ( Members
-    '[ State (UnifierState     t v)
-     , Error (UnificationError t v)
+    '[ State (UnifierState t v)
+     , Error (Mismatch     t v)
+     , Error (Occurs       t v)
      ] r
   , Ord v
   , Unifiable t
@@ -193,12 +194,16 @@ unify expected got = do
 -}
 unifyImpl :: forall t v r. Backend t v r => Term t v -> Term t v -> Sem r ()
 unifyImpl expected got = do
-  unify expected got `catch` \case
-    Occurs {var, term} -> do
-      term <- applyImpl @t @v term
-      throw Occurs {var, term}
+  catch do
+      catch do
+          unify expected got
+        \case
+          Occurs {var, term} -> do
+            term <- applyImpl @t @v term
+            throw Occurs {var, term}
 
-    Mismatch {expected, got} -> do
-      expected <- applyImpl @t @v expected
-      got      <- applyImpl @t @v got
-      throw Mismatch {expected, got}
+    \case
+      Mismatch {expected, got} -> do
+        expected <- applyImpl @t @v expected
+        got      <- applyImpl @t @v got
+        throw Mismatch {expected, got}
