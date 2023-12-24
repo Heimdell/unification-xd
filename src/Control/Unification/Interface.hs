@@ -3,6 +3,7 @@
 module Control.Unification.Interface where
 
 import Control.Unification.Unify
+import Control.Unification.Unifiable
 
-class Monad m => CanUnify m k v | m k -> v, m v -> k where
-  liftUnify :: M k v a -> m a
+class (Unifiable t, Ord v, Monad m) => CanUnify m t v | m t -> v, m v -> t where
+  liftUnify :: M t v a -> m a
