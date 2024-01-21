@@ -4,6 +4,7 @@ module Control.Unification.Scheme where
 import Data.Foldable
 import Data.Traversable
 import Data.Map qualified as Map
+import Data.Maybe
 import Polysemy
 import Polysemy.State
 import Control.Unification.Term
@@ -24,4 +25,4 @@ instantiate
 instantiate (Scheme vars body) = do
   vars' <- for vars refresh
   let renames = Map.fromList (zip vars vars')
-  return $ (renames Map.!) <$> body
+  return $ (\v -> fromMaybe v (Map.lookup v renames)) <$> body
