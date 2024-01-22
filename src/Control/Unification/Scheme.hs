@@ -9,6 +9,7 @@ import Polysemy
 import Polysemy.State
 import Control.Unification.Term
 import Control.Unification.Name
+import Data.List (nub)
 
 data Scheme t v = Scheme
   { vars :: [v]
@@ -16,7 +17,7 @@ data Scheme t v = Scheme
   }
 
 generalise :: (Ord v, Foldable t) => t v -> Scheme t v
-generalise term = Scheme (toList term) term
+generalise term = Scheme (nub (toList term)) term
 
 instantiate
   :: (Ord v, Traversable t, Member (Refreshes v) r)
